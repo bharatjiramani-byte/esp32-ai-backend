@@ -55,9 +55,9 @@ async def chat_handler(request: Request):
             wav_data = wav_io.getvalue()
 
             prompt = [
-                "Listen to this audio strictly and reply in 1 very short, concise sentence in Hindi.",
-                {"mime_type": "audio/wav", "data": wav_data}
-            ]
+    "You are a voice assistant in a physical smart box. Listen carefully to the user speech in this audio, understand the question, and provide a clear, helpful direct answer in 1 or 2 Hindi sentences.",
+    {"mime_type": "audio/wav", "data": wav_data}
+]
             response = model.generate_content(prompt)
             if response and response.text:
                 reply_text = response.text.strip()
