@@ -27,21 +27,22 @@ else:
 def home():
     return {"status": "AI Box Backend is Running"}
 
-@app.route("/chat", methods=["GET", "POST", "OPTIONS"])
-@app.route("/chat/", methods=["GET", "POST", "OPTIONS"])
+# FastAPI me api_route use hota hai
+@app.api_route("/chat", methods=["GET", "POST", "OPTIONS"])
+@app.api_route("/chat/", methods=["GET", "POST", "OPTIONS"])
 async def chat_handler(request: Request):
     if request.method != "POST":
-        return {"status": "Endpoint ready for POST raw PCM audio"}
+        return {"status": "Chat endpoint is ready for POST audio"}
 
     raw_audio = await request.body()
-    if not raw_audio:
-        return Response(status_code=400, content="No audio received")
+    if not raw_audio or len(raw_audio) < 1000:
+        return Response(status_code=400, content="Audio buffer too small or empty")
 
-    reply_text = "नमस्ते, मैं आपकी क्या मदद कर सकता हूँ?"
+    reply_text = "नमस्ते, मैं आपकी क्या सहायता कर सकता हूँ?"
 
     try:
         if not model:
-            reply_text = "कृपया रेंडर पर अपनी जेमिनी एपीआई की चेक करें।"
+            reply_text = "कृपया रेंडर पर जेमिनी एपीआई की सेट करें।"
         else:
             # 8000Hz, 16-bit Mono PCM to WAV
             wav_io = io.BytesIO()
@@ -54,19 +55,18 @@ async def chat_handler(request: Request):
             wav_data = wav_io.getvalue()
 
             prompt = [
-                "Transcribe this audio strictly and answer in 1 very short Hindi sentence.",
+                "Listen to this audio strictly and reply in 1 very short, concise sentence in Hindi.",
                 {"mime_type": "audio/wav", "data": wav_data}
             ]
             response = model.generate_content(prompt)
             if response and response.text:
                 reply_text = response.text.strip()
     except Exception as e:
-        print(f"Error occurred: {e}")
-        reply_text = "माफ़ कीजिये, ऑडियो प्रोसेस करने में समस्या हुई।"
+        print(f"Gemini API Error: {e}")
+        reply_text = "माफ़ कीजिये, आपकी बात समझने में परेशानी हुई।"
 
     print(f"AI Response: {reply_text}")
 
-    # Text to Speech MP3
     try:
         tts = gTTS(reply_text, lang='hi')
         mp3_fp = io.BytesIO()
@@ -75,4 +75,4 @@ async def chat_handler(request: Request):
         return Response(content=mp3_fp.read(), media_type="audio/mpeg")
     except Exception as e:
         print(f"TTS Error: {e}")
-        return Response(status_code=500, content=str(e))
+        return Response(status_code=500, content="TTS conversion failed")
