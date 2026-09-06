@@ -16,6 +16,8 @@ def home():
     return {"status": "AI Box Backend is Running"}
 
 @app.post("/chat")
+@app.post("/chat")
+async def chat_endpoint(request: Request):
 async def chat_endpoint(request: Request):
     raw_audio = await request.body()
     if not raw_audio:
