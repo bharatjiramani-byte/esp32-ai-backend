@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from gtts import gTTS
 import google.generativeai as genai
+import miniaudio
 
 app = FastAPI()
 
@@ -41,15 +42,13 @@ async def chat_handler(request: Request):
             if not model:
                 reply_text = "हे भैला, रेंडर पर अपनी जेमिनी एपीआई की चेक करो।"
             else:
-                # 8000Hz, 16-bit Mono PCM to WAV
+                # 8000Hz, 16-bit Mono PCM to WAV for Gemini
                 wav_io = io.BytesIO()
                 with wave.open(wav_io, "wb") as wav_file:
                     wav_file.setnchannels(1)
                     wav_file.setsampwidth(2)
                     wav_file.setframerate(8000)
                     wav_file.writeframes(raw_audio)
-                
-                wav_data = wav_io.getvalue()
 
                 prompt = [
                     (
@@ -58,25 +57,31 @@ async def chat_handler(request: Request):
                         "Rule 2: Carefully listen to the question in the audio and give a clear, direct answer in 1 or 2 simple Hindi sentences. "
                         "Rule 3: If the user audio is silent, just hello, or unclear, say: 'हे भैला, बोलो ने! मैं सुन रहा हूँ, क्या काम है?'"
                     ),
-                    {"mime_type": "audio/wav", "data": wav_data}
+                    {"mime_type": "audio/wav", "data": wav_io.getvalue()}
                 ]
                 response = model.generate_content(prompt)
-                if response and response.text:
-                    reply_text = response.text.strip()
-                else:
-                    reply_text = "हे भैला, बोलो ने! मैं सुन रहा हूँ, क्या काम है?"
+                reply_text = response.text.strip() if (response and response.text) else "हे भैला, बोलो ने! मैं सुन रहा हूँ।"
         except Exception as e:
             print(f"Error: {e}")
-            reply_text = "हे भैला, थोड़ा साफ़ आवाज़ में बोलो ने, आवाज़ कट गई थी।"
+            reply_text = "हे भैला, थोड़ा साफ़ आवाज़ में बोलो ने।"
 
     print(f"AI Response: {reply_text}")
 
-    try:
-        tts = gTTS(reply_text, lang='hi')
-        mp3_fp = io.BytesIO()
-        tts.write_to_fp(mp3_fp)
-        mp3_fp.seek(0)
-        return Response(content=mp3_fp.read(), media_type="audio/mpeg")
-    except Exception as e:
-        print(f"TTS Error: {e}")
-        return Response(status_code=500, content="Audio conversion error")
+    # Generate MP3 from gTTS
+    tts = gTTS(reply_text, lang='hi')
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    mp3_bytes = mp3_fp.getvalue()
+
+    # Decode MP3 to raw 16-bit signed PCM (16000Hz Mono)
+    decoded = miniaudio.mp3_read_s16(mp3_bytes)
+    resampled_pcm = miniaudio.resample_s16(
+        decoded.samples, 
+        sample_rate_in=decoded.sample_rate, 
+        sample_rate_out=16000, 
+        channels_in=decoded.nchannels, 
+        channels_out=1
+    )
+
+    # Return raw PCM byte stream directly to ESP32
+    return Response(content=resampled_pcm.tobytes(), media_type="application/octet-stream")
